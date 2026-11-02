@@ -3,7 +3,8 @@
 【プログラム名】teleop_wasd_camera.py
 【役割】
   CanSatローバーのリアルタイムFPV走行制御およびWebストリーミングサーバー。
-  - OS/C++レイヤーの不要なカメラログ（stderr）を抑制し、クリーンなターミナル表示を維持。
+  - 走行中はOSレベルで標準エラー（fd 2）をミュートし、libcamera/OpenCVのノイズ警告を遮断。
+  - プログラム終了時（Qキーまたは強制終了）に標準エラーを自動復帰させ、通常のエラー表示を維持。
   - Webブラウザ側に操作ガイドとHUDステータスを表示し、ブラウザ上からのWASDキー操作にも対応。
 
 【操作仕様】
@@ -17,14 +18,26 @@
 """
 
 import sys
+import os
 import select
 import termios
 import tty
 import time
-import os
 import threading
 import logging
 from datetime import datetime
+
+# ===== OSレベルの標準エラー出力（fd 2）一時退避・抑制制御 =====
+original_stderr_fd = os.dup(2)
+devnull_fd = os.open(os.devnull, os.O_WRONLY)
+
+def mute_stderr():
+    os.dup2(devnull_fd, 2)
+
+def restore_stderr():
+    os.dup2(original_stderr_fd, 2)
+
+mute_stderr()
 
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 os.environ["LIBCAMERA_LOG_LEVELS"] = "*:ERROR"
@@ -289,7 +302,7 @@ def main():
 
                 if key:
                     if key == 'q':
-                        sys.stdout.write("\r\n終了中...\r\n")
+                        sys.stdout.write("\r\n終了処理に入ります...\r\n")
                         sys.stdout.flush()
                         break
                     execute_command(key)
@@ -303,13 +316,17 @@ def main():
         sys.stdout.write("\r\n強制終了を受信しました。\r\n")
         sys.stdout.flush()
     finally:
+        # プログラム終了時に標準エラー出力を元の状態に完全復帰
+        restore_stderr()
+        os.close(devnull_fd)
+        os.close(original_stderr_fd)
+
         camera_running = False
         rover_stop()
         pwm_a.close(); pwm_b.close()
         motor_a.close(); motor_b.close()
         stby.close()
-        print("GPIOおよびカメラリソースを安全に解放しました。")
+        print("GPIOおよびカメラリソースを安全に解放しました。（エラー出力復帰済）")
 
 if __name__ == "__main__":
     main()
-EOF
