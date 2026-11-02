@@ -1,4 +1,3 @@
-cat << 'EOF' > ~/cansat16th/main/teleop_wasd_camera.py
 #!/usr/bin/env python3
 """
 【プログラム名】teleop_wasd_camera.py
