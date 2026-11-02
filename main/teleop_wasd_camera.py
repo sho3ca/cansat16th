@@ -1,19 +1,20 @@
+cat << 'EOF' > ~/cansat16th/main/teleop_wasd_camera.py
 #!/usr/bin/env python3
 """
 【プログラム名】teleop_wasd_camera.py
 【役割】
-  CanSatローバーのリアルタイムFPV走行制御および低遅延Webストリーミングサーバー。
+  CanSatローバーのリアルタイムFPV走行制御およびWebストリーミングサーバー。
   - OS/C++レイヤーの不要なカメラログ（stderr）を抑制し、クリーンなターミナル表示を維持。
   - Webブラウザ側に操作ガイドとHUDステータスを表示し、ブラウザ上からのWASDキー操作にも対応。
 
-【操作仕様 (ターミナルまたはブラウザ画面)】
+【操作仕様】
   [W] 前進 | [S] 後退 | [A] 左旋回 | [D] 右旋回
   [M] 旋回切替 | [+] 速度UP | [-] 速度DOWN | [Space] 停止
   [C] 静止画キャプチャ保存 | [Q] 終了
   ※ 無入力状態が 0.5 秒続くと自動停止（フェイルセーフ）
 
 【起動方法】
-  libcamerify python3 teleop_wasd_camera.py 2>/dev/null
+  libcamerify python3 teleop_wasd_camera.py
 """
 
 import sys
@@ -26,25 +27,22 @@ import threading
 import logging
 from datetime import datetime
 
-# libcamera / OpenCV の C++ レベル stderr 警告を抑制
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 os.environ["LIBCAMERA_LOG_LEVELS"] = "*:ERROR"
 
 import cv2
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, render_template
 from gpiozero import Motor, PWMOutputDevice, OutputDevice, Device
 from gpiozero.pins.lgpio import LGPIOFactory
 
 Device.pin_factory = LGPIOFactory()
 
-# Flask HTTPアクセスログを完全非表示
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 logging.getLogger('flask').setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
-# ===== 設定・パス初期化 =====
 CONFIG_PATH = os.path.expanduser("~/cansat_config.env")
 SAVE_DIR = os.path.expanduser("~/cansat_data/images")
 os.makedirs(SAVE_DIR, exist_ok=True)
@@ -94,7 +92,6 @@ frame_lock = threading.Lock()
 camera_running = True
 last_capture_status = "未撮影"
 
-# ===== モーター駆動関数 =====
 def drive_single_motor(motor_obj, pwm_obj, speed, direction, invert=False):
     if direction == "stop":
         pwm_obj.value = 0.0
@@ -199,7 +196,6 @@ def execute_command(cmd):
     elif cmd == 'c':
         capture_photo()
 
-# ===== カメラストリーミング & Web UI =====
 def generate_frames():
     global latest_frame
     cap = cv2.VideoCapture(0)
@@ -227,13 +223,94 @@ def generate_frames():
 
 @app.route('/')
 def index():
-    return """
-    <!DOCTYPE html>
-    <html lang="ja">
-    <head>
-      <meta charset="utf-8">
-      <title>CanSat FPV コックピット</title>
-      <style>
-        body { background-color: #0f1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-align: center; margin: 0; padding: 15px; }
-        .container { max-width: 800px; margin: auto; }
-        .stream-box
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/api/cmd', methods=['POST'])
+def api_cmd():
+    req = request.get_json(silent=True) or {}
+    cmd = req.get('cmd', '').lower()
+    if cmd:
+        execute_command(cmd)
+    return api_status()
+
+@app.route('/api/status')
+def api_status():
+    mode_str = "超信地スピン" if turn_mode == "spin" else "緩旋回カーブ"
+    return jsonify({
+        "speed": int(current_speed * 100),
+        "mode": mode_str,
+        "capture": last_capture_status
+    })
+
+class NonBlockingKeyReader:
+    def __enter__(self):
+        self.fd = sys.stdin.fileno()
+        self.old_settings = termios.tcgetattr(self.fd)
+        tty.setraw(self.fd)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
+
+    def read_key(self, timeout=0.05):
+        rlist, _, _ = select.select([self.fd], [], [], timeout)
+        if rlist:
+            return sys.stdin.read(1).lower()
+        return None
+
+def main():
+    global camera_running, is_moving
+    rover_stop()
+
+    server_thread = threading.Thread(
+        target=lambda: app.run(host='0.0.0.0', port=5000, threaded=True, use_reloader=False),
+        daemon=True
+    )
+    server_thread.start()
+
+    os.system('clear')
+    sys.stdout.write("=======================================================\r\n")
+    sys.stdout.write(" 🛰️ CanSat WASD 手動操縦 & FPVカメラサーバー\r\n")
+    sys.stdout.write(" Webコックピット: http://<ラズパイIP>:5000\r\n")
+    sys.stdout.write(" [W/A/S/D] 走行 | [Space] 停止 | [M] 旋回切替\r\n")
+    sys.stdout.write(" [+] 速度UP | [-] 速度DOWN | [C] 撮影 | [Q] 終了\r\n")
+    sys.stdout.write(" ※ ブラウザ画面をクリックして操作することも可能です\r\n")
+    sys.stdout.write("=======================================================\r\n\r\n")
+    sys.stdout.flush()
+
+    try:
+        with NonBlockingKeyReader() as reader:
+            while True:
+                key = reader.read_key(timeout=0.05)
+                now = time.time()
+
+                if key:
+                    if key == 'q':
+                        sys.stdout.write("\r\n終了中...\r\n")
+                        sys.stdout.flush()
+                        break
+                    execute_command(key)
+                else:
+                    if is_moving and (now - last_command_time > TIMEOUT_SEC):
+                        rover_stop()
+
+                time.sleep(0.01)
+
+    except KeyboardInterrupt:
+        sys.stdout.write("\r\n強制終了を受信しました。\r\n")
+        sys.stdout.flush()
+    finally:
+        camera_running = False
+        rover_stop()
+        pwm_a.close(); pwm_b.close()
+        motor_a.close(); motor_b.close()
+        stby.close()
+        print("GPIOおよびカメラリソースを安全に解放しました。")
+
+if __name__ == "__main__":
+    main()
+EOF
