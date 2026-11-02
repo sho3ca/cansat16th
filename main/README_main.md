@@ -6,13 +6,13 @@ Raspberry Pi Zero 2 W 上で動作するモータードライバ（TB6612FNG等�
 
 ## 🎮 主な操作
 
-SSHログイン後、作業用ディレクトリに移動して各テストプログラムを起動します。
+SSHログイン後、`main` ディレクトリに移動して各テストプログラムを起動します。
 
 ### 1. 初回・配線変更時: モーター極性キャリブレーション
 左右の配線やギアの取り付け向きに合わせて正転・逆転の極性を自動補正します。
 
 ```bash
-cd ~/cansat16th
+cd ~/cansat16th/main
 python3 motor_calibration.py
 ```
 - **手順**: 
@@ -26,7 +26,7 @@ python3 motor_calibration.py
 キーボード入力によるリアルタイム走行を行います。
 
 ```bash
-cd ~/cansat16th
+cd ~/cansat16th/main
 python3 teleop_wasd.py
 ```
 
@@ -49,7 +49,7 @@ python3 teleop_wasd.py
 ブラウザで機体前方のリアルタイム映像を確認しながら、WASD走行と静止画撮影を行います。
 
 ```bash
-cd ~/cansat16th
+cd ~/cansat16th/main
 libcamerify python3 teleop_wasd_camera.py
 ```
 
@@ -98,9 +98,9 @@ sudo reboot
 ターミナルで以下を実行しておくと、どのディレクトリからでも1単語で起動できます。
 
 ```bash
-echo "alias drive='cd ~/cansat16th && python3 teleop_wasd.py'" >> ~/.bashrc
-echo "alias drive-cam='cd ~/cansat16th && libcamerify python3 teleop_wasd_camera.py'" >> ~/.bashrc
-echo "alias calib-motor='cd ~/cansat16th && python3 motor_calibration.py'" >> ~/.bashrc
+echo "alias drive='cd ~/cansat16th/main && python3 teleop_wasd.py'" >> ~/.bashrc
+echo "alias drive-cam='cd ~/cansat16th/main && libcamerify python3 teleop_wasd_camera.py'" >> ~/.bashrc
+echo "alias calib-motor='cd ~/cansat16th/main && python3 motor_calibration.py'" >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -114,9 +114,8 @@ source ~/.bashrc
 
 | ファイル名 | 役割 | 管理場所 |
 | :--- | :--- | :--- |
-| `motor_calibration.py` | 左右モーターの回転方向テストを行い、極性設定を保存する対話型ツール | GitHub（共通） |
-| `teleop_wasd.py` | フェイルセーフ付きWASD手動走行プログラム（速度調整・旋回切替対応） | GitHub（共通） |
-| `teleop_wasd_camera.py` | Webライブ映像配信（ポート5000）とWASD走行・スナップショット撮影の統合プログラム | GitHub（共通） |
-| `setup_hardware.sh` | カメラストリーミング用のCMAメモリ割り当て等を行う環境設定スクリプト | GitHub（共通） |
+| `motor_calibration.py` | 左右モーターの回転方向テストを行い、極性設定を保存する対話型ツール | GitHub（共通: `main/` 内） |
+| `teleop_wasd.py` | フェイルセーフ付きWASD手動走行プログラム（速度調整・旋回切替対応） | GitHub（共通: `main/` 内） |
+| `teleop_wasd_camera.py` | Webライブ映像配信（ポート5000）とWASD走行・スナップショット撮影の統合プログラム | GitHub（共通: `main/` 内） |
 | `~/cansat_config.env` | 機体ごとのモーター極性（`MOTOR_A_INVERT`, `MOTOR_B_INVERT` 等）の個別設定ファイル | 各自のmicroSD内（Git管理外） |
 | `~/cansat_data/images/` | `teleop_wasd_camera.py` で撮影された静止画の保存先ディレクトリ | 各自のmicroSD内（非公開） |
