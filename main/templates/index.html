@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>CanSat FPV コックピット</title>
+  <style>
+    body { background-color: #0f1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-align: center; margin: 0; padding: 15px; }
+    .container { max-width: 800px; margin: auto; }
+    .stream-box { position: relative; display: inline-block; border: 2px solid #30363d; border-radius: 8px; overflow: hidden; background: #000; }
+    img { display: block; width: 640px; height: 480px; }
+    .hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 3px #000; pointer-events: none; }
+    .badge { background: rgba(0, 0, 0, 0.65); padding: 5px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); }
+    .controls { margin-top: 15px; display: flex; justify-content: center; gap: 15px; font-size: 13px; color: #8b949e; }
+    .key { display: inline-block; background: #21262d; border: 1px solid #484f58; border-radius: 4px; padding: 2px 7px; color: #58a6ff; font-weight: bold; }
+    .capture-status { margin-top: 10px; font-size: 13px; color: #3fb950; min-height: 20px; }
+  </style>
+</head>
+<body tabindex="0">
+  <div class="container">
+    <h2 style="margin: 5px 0 12px 0;">🛰️ CanSat FPV コックピット</h2>
+    <div class="stream-box">
+      <img src="/video_feed" alt="Live Stream">
+      <div class="hud">
+        <div class="badge" id="hud-speed">速度: --%</div>
+        <div class="badge" id="hud-mode">モード: --</div>
+      </div>
+    </div>
+    <div class="capture-status" id="capture-status">待機中</div>
+    <div class="controls">
+      <div><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> 走行</div>
+      <div><span class="key">Space</span> 停止</div>
+      <div><span class="key">M</span> 旋回切替</div>
+      <div><span class="key">+</span>/<span class="key">-</span> 速度調整</div>
+      <div><span class="key">C</span> 写真撮影</div>
+    </div>
+    <p style="font-size: 11px; color: #6e7681; margin-top: 8px;">※ このブラウザ画面をクリックしてキーを押すだけでも直接操縦できます</p>
+  </div>
+
+  <script>
+    function sendCmd(cmd) {
+      fetch('/api/cmd', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({cmd: cmd})
+      }).then(res => res.json()).then(data => {
+        updateHUD(data);
+      }).catch(() => {});
+    }
+
+    function updateHUD(data) {
+      if (!data) return;
+      document.getElementById('hud-speed').innerText = '速度: ' + data.speed + '%';
+      document.getElementById('hud-mode').innerText = 'モード: ' + data.mode;
+      if (data.capture) {
+        document.getElementById('capture-status').innerText = data.capture;
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (['w','a','s','d',' ','m','+','-','=','_','c'].includes(k)) {
+        e.preventDefault();
+        sendCmd(k);
+      }
+    });
+
+    setInterval(() => {
+      fetch('/api/status').then(res => res.json()).then(updateHUD).catch(() => {});
+    }, 1000);
+  </script>
+</body>
+</html>
+EOF
